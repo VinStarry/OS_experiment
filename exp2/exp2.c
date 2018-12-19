@@ -32,7 +32,10 @@ int main(void) {
     pthread_t counter, printer;
     int iret1 = 0, iret2 = 0;
 
-    /* Create two semaphore to deal with Synchronization */
+    /* Create two semaphore to deal with Synchronization,
+       semaphore 0 indicates whether print has finished,
+       semaphore 1 indicates whether cnt has added.
+     */
     sem_id = semget(IPC_PRIVATE, 2, IPC_CREAT | 0666);
     if (sem_id == -1) {
         // error creating semaphore
@@ -69,12 +72,16 @@ int main(void) {
     return 0;
 }
 
+/*  
+    semaphore 0 indicates whether print has finished
+    semaphore 1 indicates whether cnt has added
+*/
 void *counter_function(void *message) {
     printf("Counter begin functioning!\n");
     for (int i = 0; i < MAX_TIME; i++) {
         semaphore_P(0);
-        cnt++;
-        printf("Counter ++\n");
+        cnt = cnt + i + 1;
+        printf("Counter = Counter + %d\n", i + 1);
         semaphore_V(1);
     }
     return NULL;
