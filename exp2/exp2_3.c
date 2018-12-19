@@ -7,8 +7,6 @@
 #include <sys/sem.h>
 #include <stdbool.h>
 
-#define MAX_TIME 100
-
 enum ERR_LIST {CREATE_ERROR, INIT_ERROR, OPERAT_ERROR, DELETE_ERROR};
 
 union semun {
@@ -17,23 +15,25 @@ union semun {
     unsigned short  *array;  /* Array for GETALL, SETALL */
 };
 
-void *printer_function(void *);
-void *counter_function(void *);
+int philo_id[5] = {0,1,2,3,4};
+
+void *philosopher(void * id);
 bool  semaphore_P(unsigned short sum_num);
 bool  semaphore_V(unsigned short sum_num);
 bool  set_value_semaphore(void);
 void  delete_semaphore(void);
 void  display_last_sem_error(int err_type);
+void  eat(unsigned short id) {printf("philosopher %d is eating meal!\n", id);}
 
 int sem_id = 0;
 int cnt = 0;
 
 int main(void) {
-    pthread_t counter, printer;
-    int iret1 = 0, iret2 = 0;
+    pthread_t ph0, ph1, ph2, ph3, ph4;
+    int iret1 = 0, iret2 = 0, iret3 = 0, iret4 = 0, iret5 = 0;
 
     /* Create two semaphore to deal with Synchronization */
-    sem_id = semget(IPC_PRIVATE, 2, IPC_CREAT | 0666);
+    sem_id = semget(IPC_PRIVATE, 5, IPC_CREAT | 0666);
     if (sem_id == -1) {
         // error creating semaphore
         display_last_sem_error(CREATE_ERROR);
@@ -47,49 +47,61 @@ int main(void) {
         exit(1);
     }
 
-    /* Create 2 independent threads each of which will execute function */
-    if ((iret1 = pthread_create(&counter, NULL, counter_function, NULL)) != 0) {
+    /* Create 5 independent threads each of which will execute function */
+    if ((iret1 = pthread_create(&ph0, NULL, philosopher, (void *)(& philo_id[0]))) != 0) {
         // error creating the first thread
-        perror("Create thread for counter failed!\n");
+        perror("Create thread for philosopher 0 failed!\n");
         delete_semaphore();
         exit(1);
     }
 
-    if ((iret2 = pthread_create(&printer, NULL, printer_function, NULL)) != 0) {
+    if ((iret2 = pthread_create(&ph1, NULL, philosopher, (void *)(& philo_id[1]))) != 0) {
         // error creating the second thread
-        perror("Create thread for printer failed!\n");
+        perror("Create thread for philosopher 1 failed!\n");
+        delete_semaphore();
+        exit(1);
+    }
+
+    if ((iret3 = pthread_create(&ph2, NULL, philosopher, (void *)(& philo_id[2]))) != 0) {
+        // error creating the third thread
+        perror("Create thread for philosopher 2 failed!\n");
+        delete_semaphore();
+        exit(1);
+    }
+
+    if ((iret4 = pthread_create(&ph3, NULL, philosopher, (void *)(& philo_id[3]))) != 0) {
+        // error creating the fourth thread
+        perror("Create thread for philosopher 3 failed!\n");
+        delete_semaphore();
+        exit(1);
+    }
+
+    if ((iret5 = pthread_create(&ph4, NULL, philosopher, (void *)(& philo_id[4]))) != 0) {
+        // error creating the fifth thread
+        perror("Create thread for philosopher 4 failed!\n");
         delete_semaphore();
         exit(1);
     }
 
     /* Wait till threads are complete before main continues */
-    pthread_join(counter, NULL);
-    pthread_join(printer, NULL);
+    pthread_join(ph0, NULL);
+    pthread_join(ph1, NULL);
+    pthread_join(ph2, NULL);
+    pthread_join(ph3, NULL);
+    pthread_join(ph4, NULL);
     delete_semaphore();
     return 0;
 }
 
-void *counter_function(void *message) {
-    printf("Counter begin functioning!\n");
-    for (int i = 0; i < MAX_TIME; i++) {
-        semaphore_P(0);
-        cnt++;
-        printf("Counter ++\n");
-        semaphore_V(1);
-    }
+void *philosopher(void *id) {
+    unsigned short pher_id = *(unsigned short *)id;
+    semaphore_P(pher_id);
+    semaphore_P((unsigned short)((pher_id + 1) % 5));
+    eat(pher_id);
+    semaphore_V((unsigned short)((pher_id + 1) % 5));
+    semaphore_V(pher_id);
     return NULL;
 }
-
-void *printer_function(void *message) {
-    printf("Printer begin functioning!\n");
-    for (int i = 0; i < MAX_TIME; i++) {
-        semaphore_P(1);
-        printf("Print counter : %d\n", cnt);
-        semaphore_V(0);
-    }
-    return NULL;
-}
-
 
 bool semaphore_P(unsigned short sum_num) {
     struct sembuf sem;
@@ -126,12 +138,35 @@ bool set_value_semaphore(void) {
         display_last_sem_error(INIT_ERROR);
         return false;
     }
-    sem_union.val = 0;
+
+    sem_union.val = 1;
     if (semctl(sem_id, 1, SETVAL, sem_union) == -1) {
         perror("Fail to set value for semaphore!\n");
         display_last_sem_error(INIT_ERROR);
         return false;
     }
+
+    sem_union.val = 1;
+    if (semctl(sem_id, 2, SETVAL, sem_union) == -1) {
+        perror("Fail to set value for semaphore!\n");
+        display_last_sem_error(INIT_ERROR);
+        return false;
+    }
+
+    sem_union.val = 1;
+    if (semctl(sem_id, 3, SETVAL, sem_union) == -1) {
+        perror("Fail to set value for semaphore!\n");
+        display_last_sem_error(INIT_ERROR);
+        return false;
+    }
+
+    sem_union.val = 1;
+    if (semctl(sem_id, 4, SETVAL, sem_union) == -1) {
+        perror("Fail to set value for semaphore!\n");
+        display_last_sem_error(INIT_ERROR);
+        return false;
+    }
+
     return true;
 }
 

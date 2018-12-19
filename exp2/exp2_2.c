@@ -1,12 +1,17 @@
+#define _GNU_SOURCE
+#include <unistd.h>
+#include <fcntl.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <pthread.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <sys/ipc.h>
 #include <sys/sem.h>
 #include <stdbool.h>
+#include <string.h>
+#include <stdlib.h>
 
+#define BUFLEN 50
 #define MAX_TIME 100
 
 enum ERR_LIST {CREATE_ERROR, INIT_ERROR, OPERAT_ERROR, DELETE_ERROR};
@@ -17,79 +22,99 @@ union semun {
     unsigned short  *array;  /* Array for GETALL, SETALL */
 };
 
-void *printer_function(void *);
-void *counter_function(void *);
-bool  semaphore_P(unsigned short sum_num);
-bool  semaphore_V(unsigned short sum_num);
+int pipefd[2];
+int pid1, pid2;
+int count = 0;
+int sem_id = 0;
+
+void counter_write(void);
+void printer_read(void);
+bool semaphore_P(unsigned short sum_num);
+bool semaphore_V(unsigned short sum_num);
 bool  set_value_semaphore(void);
 void  delete_semaphore(void);
 void  display_last_sem_error(int err_type);
 
-int sem_id = 0;
-int cnt = 0;
-
 int main(void) {
-    pthread_t counter, printer;
-    int iret1 = 0, iret2 = 0;
 
     /* Create two semaphore to deal with Synchronization */
     sem_id = semget(IPC_PRIVATE, 2, IPC_CREAT | 0666);
     if (sem_id == -1) {
         // error creating semaphore
         display_last_sem_error(CREATE_ERROR);
-        exit(1);
+        _exit(1);
     }
 
     /* Set value for semaphores */
     if (set_value_semaphore() == false) {
         display_last_sem_error(INIT_ERROR);
         delete_semaphore();
-        exit(1);
+        _exit(1);
     }
 
-    /* Create 2 independent threads each of which will execute function */
-    if ((iret1 = pthread_create(&counter, NULL, counter_function, NULL)) != 0) {
-        // error creating the first thread
-        perror("Create thread for counter failed!\n");
+    if (pipe2(pipefd, O_NONBLOCK) == -1) {
+        perror("Fail to create a pipe!\n");
         delete_semaphore();
-        exit(1);
+        _exit(1);
     }
 
-    if ((iret2 = pthread_create(&printer, NULL, printer_function, NULL)) != 0) {
-        // error creating the second thread
-        perror("Create thread for printer failed!\n");
+    pid1 = fork();
+    if (pid1 < 0) {
+        perror("Fail to create the counter process!\n");
         delete_semaphore();
-        exit(1);
     }
-
-    /* Wait till threads are complete before main continues */
-    pthread_join(counter, NULL);
-    pthread_join(printer, NULL);
-    delete_semaphore();
+    else if (pid1 == 0) {
+        printf("Success to create the counter process, %d\n", getpid());
+        counter_write();
+    }
+    else {
+        pid2 = fork();
+        if (pid2 < 0) {
+            perror("Fail to create the second printer process!\n");
+            delete_semaphore();
+        }
+        else if (pid2 == 0) {
+            printf("Success to create the second printer process, %d\n", getpid());
+            printer_read();
+        }
+        waitpid(pid1, NULL, 0);
+        waitpid(pid2, NULL, 0);
+    }
     return 0;
 }
 
-void *counter_function(void *message) {
-    printf("Counter begin functioning!\n");
+void counter_write(void) {
+    close(pipefd[0]);
+    char buf[BUFLEN];
     for (int i = 0; i < MAX_TIME; i++) {
         semaphore_P(0);
-        cnt++;
-        printf("Counter ++\n");
+        count ++;
+        sprintf(buf,"I send you %d times",count);
+        buf[strlen(buf)] = '\0';
+        printf("Counter: %s\n",buf);
+        if (write(pipefd[1],buf,strlen(buf)) < 0) {
+            perror("Write failed!\n");
+            break;
+        }
         semaphore_V(1);
     }
-    return NULL;
 }
 
-void *printer_function(void *message) {
-    printf("Printer begin functioning!\n");
+void printer_read(void) {
+    close(pipefd[1]);
+    char recv[BUFLEN];
+    ssize_t length = 0;
     for (int i = 0; i < MAX_TIME; i++) {
         semaphore_P(1);
-        printf("Print counter : %d\n", cnt);
+        if ((length = read(pipefd[0], recv, sizeof(recv))) == 0 ) {
+            perror("Read failed!\n");
+            break;
+        }
+        recv[length] = '\0';
+        printf("Printer: receive %s\n", recv);
         semaphore_V(0);
     }
-    return NULL;
 }
-
 
 bool semaphore_P(unsigned short sum_num) {
     struct sembuf sem;
