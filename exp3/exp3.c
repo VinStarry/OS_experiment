@@ -275,7 +275,6 @@ void read_buffer(const char *dest_name) {
     long sent = 0;
     char unit1, unit2;
     double total_convert = 0.0, sent_convert = 0.0;
-    int rate = 0;
     int bar_pos = 0;
     char bar[21] = {0};
     char *title = phrase_title(dest_name);
@@ -306,9 +305,11 @@ void read_buffer(const char *dest_name) {
             sent_convert = show_size(sent, &unit2);
             while (bar_pos < (int)(sent * 100 / total_length * 20 / 100) && bar_pos < 20) {
                 bar[bar_pos++] = '#';
+                circle_title(&title);
             }
-            printf("[%-15s][%-20s],%d%%",title,bar,(int)(sent * 100 / total_length));
+            printf("[%-15s][%-20s] %d%%",title,bar,(int)(sent * 100 / total_length));
             printf(", %4.2lf%c/%4.2lf%c\r",sent_convert,unit2,total_convert,unit1);
+            //printf("\033[?25l");
             fflush(stdout);
         }
     }
@@ -371,7 +372,8 @@ double show_size(long file_size, char *unit) {
 
 char* phrase_title(const char* file_name) {
     bool found = false;
-    char* title = (char *)malloc(15 * sizeof(char));
+    bool change = false;
+    char* title = (char *)malloc(16 * sizeof(char));
     int pos = 0;
     size_t length = strlen(file_name);
     for(int i = (int)(length - 1); i >= 0; i--) {
@@ -385,17 +387,23 @@ char* phrase_title(const char* file_name) {
         pos = 0;
     }
     for(int i = 0; i < 14; i++) {
-        title[i] = file_name[pos + i + 1];
+        title[i] = change ? (char)' ' : file_name[pos + i + 1];
+        if(title[i] == '\0') {
+            change = true;
+            title[i] = ' ';
+        }
     }
-    title[14] = '\0';
+    title[15] = '\0';
     return title;
 }
 
 void circle_title(char** title_name) {
     char temp = (*title_name)[0];
-    for (int i = 0; i < 14; i++) {
+    for (int i = 0; i < 15; i++) {
         (*title_name)[i - 1] = (*title_name)[i];
+        if ((*title_name)[i - 1] == '\0')
+            (*title_name)[i - 1] = ' ';
     }
-    (*title_name)[13] = temp;
-    (*title_name)[14] = '\0';
+    (*title_name)[14] = temp;
+    (*title_name)[15] = '\0';
 }
