@@ -36,9 +36,11 @@ int main(int argc, const char *argv[]) {
 
     pid1 = fork();
     if (pid1 < 0) {
+        /* failed to create the first child process */
         perror("Fail to create the first child process!\n");
     }
     else if (pid1 == 0) {
+        /* this is child process 1 executing */
         printf("Success to create the first child process, %d\n", getpid());
         signal(SIGUSR1, childrenKilled);
         pip1_write();
@@ -46,13 +48,17 @@ int main(int argc, const char *argv[]) {
     else {
         pid2 = fork();
         if (pid2 < 0) {
+            /* failed to create the second child process */
             perror("Fail to create the second child process!\n");
         }
         else if (pid2 == 0) {
+            /* this is child process 2 executing */
             printf("Success to create the second child process, %d\n", getpid());
             signal(SIGUSR1, childrenKilled);
             pip2_read();
         }
+        // this is main process
+        // wait two child process to end
         waitpid(pid1, NULL, 0);
     	waitpid(pid2, NULL, 0);
     	printf("Parent Process is killed!\n");
@@ -60,6 +66,11 @@ int main(int argc, const char *argv[]) {
     return 0;
 }
 
+
+v/** 
+    Send SIGUSR1 signal to two processes
+    @param sig_no: specify which process to kill
+*/
 void killForks(int sig_no) {
     switch (sig_no) {
         case SIGINT:
@@ -76,6 +87,10 @@ void killForks(int sig_no) {
     }
 }
 
+/** 
+    kill two child processes, use sig_no to determine which process to kill
+    @param sig_no: specify which process to kill
+*/
 void childrenKilled(int sig_no) {
     close(pipefd[0]);
     close(pipefd[1]);
@@ -89,8 +104,12 @@ void childrenKilled(int sig_no) {
     }
 }
 
+/** 
+    pipe1_write: fork1 write into the pipe
+*/
+
 void pip1_write(void) {
-    close(pipefd[0]);
+    close(pipefd[0]);   // close read fd
     char buf[BUFLEN];
     while (true) {
     	sleep((unsigned int)sleeptime);
@@ -102,8 +121,11 @@ void pip1_write(void) {
     }
 }
 
+/** 
+    pip2_read: fork2 read from pipe
+*/
 void pip2_read(void) {
-    close(pipefd[1]);
+    close(pipefd[1]);   // close write fd
     char recv[BUFLEN];
     int length = 0;
     while (1) {
