@@ -33,7 +33,7 @@ int main(void) {
     int iret1 = 0, iret2 = 0, iret3 = 0, iret4 = 0, iret5 = 0;
 
     /* Create two semaphore to deal with Synchronization */
-    sem_id = semget(IPC_PRIVATE, 5, IPC_CREAT | 0666);
+    sem_id = semget(IPC_PRIVATE, 6, IPC_CREAT | 0666);
     if (sem_id == -1) {
         // error creating semaphore
         display_last_sem_error(CREATE_ERROR);
@@ -95,11 +95,15 @@ int main(void) {
 
 void *philosopher(void *id) {
     unsigned short pher_id = *(unsigned short *)id;
-    semaphore_P(pher_id);
-    semaphore_P((unsigned short)((pher_id + 1) % 5));
-    eat(pher_id);
-    semaphore_V((unsigned short)((pher_id + 1) % 5));
-    semaphore_V(pher_id);
+    while(true) {
+        semaphore_P(5);
+        semaphore_P(pher_id);
+        semaphore_P((unsigned short)((pher_id + 1) % 5));
+        eat(pher_id);
+        semaphore_V((unsigned short)((pher_id + 1) % 5));
+        semaphore_V(pher_id);
+        semaphore_V(5);
+    }
     return NULL;
 }
 
@@ -162,6 +166,13 @@ bool set_value_semaphore(void) {
 
     sem_union.val = 1;
     if (semctl(sem_id, 4, SETVAL, sem_union) == -1) {
+        perror("Fail to set value for semaphore!\n");
+        display_last_sem_error(INIT_ERROR);
+        return false;
+    }
+
+    sem_union.val = 4;
+    if (semctl(sem_id, 5, SETVAL, sem_union) == -1) {
         perror("Fail to set value for semaphore!\n");
         display_last_sem_error(INIT_ERROR);
         return false;
