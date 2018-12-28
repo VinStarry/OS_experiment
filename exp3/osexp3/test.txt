@@ -1,0 +1,262 @@
+typedef struct shared_buffer{
+    key_t                 key;      /* key to generate shared memory */
+    int                   shm_id;   /* shared memory ID */
+    char                  *shm;     /* shared memory buffer */
+//    size_t                length;   /* real length of the memory */
+    struct shared_buffer* next;     /* next shared memory buffer */
+}shared_buffer;
+
+union semun {
+    int              val;    /* Value for SETVAL */
+    struct semid_ds *buf;    /* Buffer for IPC_STAT, IPC_SET */
+    unsigned short  *array;  /* Array for GETALL, SETALL */
+};
+
+shared_buffer *sb_set = NULL;
+int semaphore_id = 0;
+int pid1 = 0, pid2 = 0;
+char *file_name = NULL;
+char *dest_name = NULL;
+long file_size = 0;
+key_t shm_key = 1600;
+
+void create_attach_shared_memory();
+void delete_detach_shared_memory();
+void create_semaphores_set();
+void delete_semaphores_set();
+bool semaphore_P(unsigned short sum_num);
+bool semaphore_V(unsigned short sum_num);
+void read_buffer();
+void write_buffer();
+void get_file_size(FILE *fp);
+
+int main(int argc, const char *argv[]) {
+    file_name = "/home/vinstarry/CLionProjects/osexp3/test.txt";
+    dest_name = "/home/vinstarry/CLionProjects/osexp2/test.txt";
+    if (argc > 1) {
+        file_name = (char *)argv[1];
+    }
+    printf("%s\n", file_name);
+    /* create a set of shared memory */
+    create_attach_shared_memory();
+    /* create a set of semaphores */
+    create_semaphores_set();
+    /* create two process read_buffer and write_buffer */
+    pid1 = fork();
+    if (pid1 < 0) {
+        perror("Fail to create the first child process!\n");
+        exit(EXIT_FAILURE);
+    }
+    else if (pid1 == 0) {
+        printf("Success to create the first child process, %d\n", getpid());
+        read_buffer();
+        exit(EXIT_SUCCESS);
+    }
+
+    pid2 = fork();
+    if (pid2 < 0) {
+        perror("Fail to create the read child process!\n");
+        exit(EXIT_FAILURE);
+    }
+    else if (pid2 == 0) {
+        printf("Success to create the write child process, %d\n", getpid());
+        write_buffer();
+        exit(EXIT_SUCCESS);
+    }
+
+    /* wait for two process being finished */
+    waitpid(pid1, NULL, 0);
+    waitpid(pid2, NULL, 0);
+    printf("Parent Process is killed!\n");
+
+    /* delete semaphores */
+    delete_semaphores_set();
+    /* detach delete shared memories */
+    delete_detach_shared_memory();
+    return 0;
+}
+
+void create_attach_shared_memory() {
+    int temp_id = 0;
+    sb_set = (shared_buffer *)malloc(sizeof(shared_buffer));
+    shared_buffer *cur_ptr = NULL;
+    sb_set->next = NULL;
+    sb_set->shm_id = 0;
+    sb_set->shm = NULL;
+    sb_set->key = 0;
+    cur_ptr = sb_set;
+
+    for (int i = 0; i < BUF_NUM; i++) {
+        cur_ptr->next = (shared_buffer *)malloc(sizeof(shared_buffer));
+        cur_ptr = cur_ptr->next;
+        cur_ptr->next = NULL;
+//        cur_ptr->length = 0;
+        if ( (temp_id = shmget((shm_key + i), BUF_SZ, IPC_CREAT | 0666) ) == -1) {
+            perror("Shared memory get failed!\n");
+            exit(EXIT_FAILURE);
+        }
+        if ( (cur_ptr->shm = shmat(temp_id, NULL, 0)) == (char *)-1) {
+            perror("Shared memory attached failed!\n");
+            exit(EXIT_FAILURE);
+        }
+        cur_ptr->shm_id = temp_id;
+        cur_ptr->key = shm_key + i + 1;
+    }
+    cur_ptr->next = sb_set->next;
+}
+
+void delete_detach_shared_memory() {
+    shared_buffer *curr = sb_set->next, *prev = NULL;
+
+    for (int i = 0; i < BUF_NUM; i++) {
+        prev = curr;
+        curr = (i == BUF_NUM - 1) ? NULL : curr->next;
+        if (shmdt(prev->shm) == -1) {
+            perror("Shared memory detech failed\n");
+            exit(EXIT_FAILURE);
+        }
+        if (shmctl(prev->shm_id, IPC_RMID, 0) == -1) {
+            perror("Shared memory delete failed\n");
+            exit(EXIT_FAILURE);
+        }
+        prev->shm = NULL;
+        free(prev);
+        prev = NULL;
+    }
+    free(sb_set);
+    sb_set = NULL;
+}
+
+void create_semaphores_set() {
+    union semun sem_union;
+
+    semaphore_id = semget(IPC_PRIVATE, 2, IPC_CREAT | 0666);
+    if (semaphore_id == -1) {
+        perror("Error creating semaphore set!\n");
+        exit(EXIT_FAILURE);
+    }
+
+    sem_union.val = BUF_NUM;
+    if (semctl(semaphore_id, SEM_READ, SETVAL, sem_union) == -1) {
+        perror("Fail to set value for semaphore!\n");
+        exit(EXIT_FAILURE);
+    }
+    sem_union.val = 0;
+    if (semctl(semaphore_id, SEM_WRITE, SETVAL, sem_union) == -1) {
+        perror("Fail to set value for semaphore!\n");
+        exit(EXIT_FAILURE);
+    }
+}
+
+void delete_semaphores_set() {
+    union semun sem_union;
+    sem_union.val = 0;
+
+    if (semctl(semaphore_id, 0, IPC_RMID, sem_union) == -1) {
+        perror("Failed to delete semaphore!\n");
+        exit(EXIT_FAILURE);
+    }
+}
+
+bool semaphore_P(unsigned short sum_num) {
+    struct sembuf sem;
+    sem.sem_num = sum_num;
+    sem.sem_op = -1;
+    sem.sem_flg = 0;
+    if (semop(semaphore_id, &sem, 1) == -1) {
+        perror("semaphore P failed!\n");
+        return false;
+    }
+    return true;
+}
+
+bool semaphore_V(unsigned short sum_num) {
+    struct sembuf sem;
+    sem.sem_num = sum_num;
+    sem.sem_op = 1;
+    sem.sem_flg = 0;
+    if (semop(semaphore_id, &sem, 1) == -1) {
+        perror("semaphore V failed!\n");
+        return false;
+    }
+    return true;
+}
+
+void read_buffer() {
+    FILE *fp_read;
+    if ((fp_read = fopen(file_name, "rb")) == NULL) {
+        perror("cannot open file for reading\n");
+        exit(EXIT_FAILURE);
+    }
+    else {
+        printf("Open file succeed!\n");
+        get_file_size(fp_read);
+        rewind(fp_read);
+        size_t len = 0;
+        char *temp = (char *)malloc(BUF_SZ * sizeof(char));
+        shared_buffer *cur = sb_set->next;
+        while ( ( len = fread(temp, sizeof(char), BUF_SZ, fp_read) ) != 0) {
+            semaphore_P(SEM_READ);
+            strcpy(cur->shm, temp);
+//            cur->length = len;
+            cur = cur->next;
+//            printf("read key = %d, length = %lu, shm_id = %d\n", cur->key, len, cur->shm_id);
+            semaphore_V(SEM_WRITE);
+        }
+        printf("reading finished!\n");
+    }
+    fclose(fp_read);
+}
+
+void write_buffer() {
+    FILE *fp_write;
+    long write_size = 0;
+    if ((fp_write = fopen(dest_name,"wb")) == NULL) {
+        perror("cannot write file for writing\n");
+        exit(EXIT_FAILURE);
+    }
+    else {
+        printf("Begin to write!\n");
+        char *temp = (char *)malloc(BUF_SZ * sizeof(char));
+        int this_id = 0;
+        shared_buffer *cur = sb_set->next;
+        long sz = 0;
+        while (semctl(semaphore_id, SEM_WRITE, GETVAL)) {
+            semaphore_P(SEM_WRITE);
+            if ( (this_id = shmget(cur->key, BUF_SZ, 0)) == -1) {
+                perror("shared memory get failed!\n");
+                exit(EXIT_FAILURE);
+            }
+            if ( (cur->shm = shmat(this_id, NULL, 0)) == (char *)-1) {
+                perror("shared memory attach failed!\n");
+                exit(EXIT_FAILURE);
+            }
+            strcpy(temp, cur->shm);
+            sz = fwrite(temp, sizeof(char), BUF_SZ, fp_write);
+            write_size += sz;
+            cur = cur->next;
+//            printf("write key = %d, length = %lu, shm_id = %d\n", cur->key, sz, cur->shm_id);
+            semaphore_V(SEM_READ);
+        }
+        get_file_size(fp_write);
+    }
+    fclose(fp_write);
+}
+
+void get_file_size(FILE *fp) {
+    rewind(fp);
+    fseek(fp, 0L, SEEK_END);
+    file_size = ftell(fp);
+    if (file_size > 1024 * 1024 * 1024) {
+        printf("File size is %lfG\n", (double)file_size / 1024.0 / 1024.0 / 1024.0);
+    }
+    else if (file_size > 1024 * 1024) {
+        printf("File size is %lfM\n", (double)file_size / 1024.0 / 1024.0);
+    }
+    else if (file_size > 1024) {
+        printf("File size is %lfK\n", (double)file_size / 1024.0);
+    }
+    else {
+        printf("File size is %ldB\n", file_size);
+    }
+}

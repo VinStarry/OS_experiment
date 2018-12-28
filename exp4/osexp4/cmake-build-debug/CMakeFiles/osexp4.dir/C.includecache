@@ -1,0 +1,32 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/vinstarry/CLionProjects/osexp4/main.c
+stdio.h
+-
+unistd.h
+-
+stdlib.h
+-
+dirent.h
+-
+sys/types.h
+-
+sys/stat.h
+-
+string.h
+-
+time.h
+-
+pwd.h
+-
+grp.h
+-
+libgen.h
+-
+

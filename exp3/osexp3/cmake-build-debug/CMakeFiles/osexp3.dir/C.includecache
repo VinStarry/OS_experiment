@@ -1,0 +1,34 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/vinstarry/CLionProjects/osexp3/main.c
+stdio.h
+-
+stdlib.h
+-
+sys/types.h
+-
+sys/fcntl.h
+-
+sys/stat.h
+-
+sys/ipc.h
+-
+sys/shm.h
+-
+sys/sem.h
+-
+sys/wait.h
+-
+stdbool.h
+-
+unistd.h
+-
+string.h
+-
+
